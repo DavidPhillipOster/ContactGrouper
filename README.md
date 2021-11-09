@@ -2,7 +2,7 @@
 
 An app to let the user quickly add and remove existing contacts from existing groups.
 
-Running in iPod Touch simulator in landcale mode, it looks like this:
+Running in iPod Touch simulator in landscape mode, it looks like this:
 
 ![sample](images/sample.png)
 
