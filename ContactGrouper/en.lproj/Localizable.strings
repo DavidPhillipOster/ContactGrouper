@@ -1,0 +1,20 @@
+/* 
+  Localizable.strings
+  ContactGrouper
+
+  by David Phillip Oster © 2021 All Rights Reserved on 11/5/21.
+*/
+
+"Contacts" = "Contacts";
+
+"ContactsDenied" = "Access to Contacts is turned off.";
+
+"ContactsSuggestion" = "You can enable access in the Settings app.";
+
+"Groups" = "Groups";
+
+"OK" = "OK";
+
+"Settings" = "Settings";
+
+

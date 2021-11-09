@@ -1,2 +1,29 @@
-# ContactGrouper
-an iOS app that lets see and edit, for each contact, all the groups that contact is in.
+#  ContactGrouper
+
+An app to let the user quickly add and remove existing contacts from existing groups.
+
+It operates only on non-unified contacts in the default container.
+
+Annoyingly, this works in the iOS 15 simulator and on the macOS Monterey, and on iPads, both 
+iOS 15 and iOS 12, but on an actual iOS 15 iPhone any attempt to change the association between
+a contact and its groups returns:
+
+    CNErrorDomain Code=2 "(null)"
+
+which comes from the line:
+
+    if ([self.store executeSaveRequest:request error:&error]) {
+
+in -[ContactGroupViewController cellDidChange:]
+
+with no additional information.
+
+on an iPhone, ContactGrouper is best used in landscape mode.
+
+All the interesting code is in ContactGroupViewController.m
+
+Version 1.1 - backport to also support iOS 12.
+Version 1.2 - two column user interface: select a contact, edit its group membership.
+
+## Apache License
+ 

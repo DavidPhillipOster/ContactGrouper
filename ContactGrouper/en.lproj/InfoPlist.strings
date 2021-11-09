@@ -1,0 +1,8 @@
+/* 
+  InfoPlist.strings
+  ContactGrouper
+
+  by David Phillip Oster © 2021 All Rights Reserved on 11/5/21.
+  
+*/
+"NSContactsUsageDescription" = "This app exists to edit the binding between contacts and groups.";
