@@ -7,7 +7,7 @@
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
-@property(nonatomic) UIWindow *window;  // iOS 12 only
+@property(nonatomic) UIWindow *window;
 
 @end
 
