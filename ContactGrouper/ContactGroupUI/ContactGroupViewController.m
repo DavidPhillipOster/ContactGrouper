@@ -78,6 +78,9 @@ static void Append(NSMutableArray *a, NSString *s){
   self.groupTableView = groupTableView;
   [view addSubview:groupTableView];
   self.view = view;
+  // In split screen mode, some other app could create, destroy, or modify users or groups.
+  NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+  [nc addObserver:self selector:@selector(reinitModel:) name:CNContactStoreDidChangeNotification object:nil];
 }
 
 - (void)viewDidLoad {
@@ -89,80 +92,84 @@ static void Append(NSMutableArray *a, NSString *s){
 }
 
 // Does the work of fetching all the groups and all the discrete contacts within those groups.
-- (void)initializeAllGroups {
+- (void)initializeModel {
   static dispatch_once_t onceToken;
   dispatch_once(&onceToken, ^{
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
-      NSError *error = nil;
-      NSArray<CNGroup *> *groups = [[self.store groupsMatchingPredicate:nil error:&error] sortedArrayUsingComparator:^NSComparisonResult(id obj1, id  obj2) {
-        CNGroup *g1 = obj1;
-        CNGroup *g2 = obj2;
-        return [g1.name caseInsensitiveCompare: g2.name];
-      }];
+    [self reinitModel:nil];
+  });
+}
+
+- (void)reinitModel:(NSNotification *)unused {
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
+    NSError *error = nil;
+    NSArray<CNGroup *> *groups = [[self.store groupsMatchingPredicate:nil error:&error] sortedArrayUsingComparator:^NSComparisonResult(id obj1, id  obj2) {
+      CNGroup *g1 = obj1;
+      CNGroup *g2 = obj2;
+      return [g1.name caseInsensitiveCompare: g2.name];
+    }];
+    if (error) {
+      [self presentError:error];
+    }
+    NSMutableArray<NSString *> *contactIDs = [NSMutableArray array];
+    NSPredicate *collectionPredicate =  [CNContact predicateForContactsInContainerWithIdentifier:self.store.defaultContainerIdentifier];
+    NSArray *keys = @[CNContactIdentifierKey,
+        CNContactNamePrefixKey,
+        CNContactGivenNameKey,
+        CNContactMiddleNameKey,
+        CNContactFamilyNameKey,
+        CNContactNameSuffixKey,
+        CNContactOrganizationNameKey,
+    ];
+    NSArray<CNContact *> *contactsInDefaultCollection = [self.store cg_discreteContactsMatchingPredicate:collectionPredicate keysToFetch:keys error:&error];
+    contactsInDefaultCollection = [contactsInDefaultCollection sortedArrayUsingComparator:^(id obj1, id obj2) {
+      CNContact *a = obj1;
+      CNContact *b = obj2;
+      NSString *aS = [a familyName];
+      if (0 == aS.length) {
+        aS = [a organizationName];
+      }
+      NSString *bS = [b familyName];
+      if (0 == bS.length) {
+        bS = [b organizationName];
+      }
+      NSComparisonResult result = [aS caseInsensitiveCompare:bS];
+      if (NSOrderedSame == result) {
+        aS = [a givenName];
+        bS = [b givenName];
+        result = [aS caseInsensitiveCompare:bS];
+      }
+      return result;
+    }];
+    for (CNContact *contact in contactsInDefaultCollection) {
+       [contactIDs addObject:contact.identifier];
+    }
+    NSSet *contactSet = [NSSet setWithArray:contactIDs];
+
+    NSMutableArray<GroupModel *> *allGroups = [NSMutableArray array];
+    for (CNGroup *group in groups) {
+      GroupModel *gm = [[GroupModel alloc] init];
+      gm.group = group;
+      NSPredicate *predicate = [CNContact predicateForContactsInGroupWithIdentifier:group.identifier];
+      NSArray<CNContact *> *contacts = [self.store cg_discreteContactsMatchingPredicate:predicate keysToFetch:@[CNContactIdentifierKey] error:&error];
       if (error) {
         [self presentError:error];
+        break;
       }
-      NSMutableArray<NSString *> *contactIDs = [NSMutableArray array];
-      NSPredicate *collectionPredicate =  [CNContact predicateForContactsInContainerWithIdentifier:self.store.defaultContainerIdentifier];
-      NSArray *keys = @[CNContactIdentifierKey,
-          CNContactNamePrefixKey,
-          CNContactGivenNameKey,
-          CNContactMiddleNameKey,
-          CNContactFamilyNameKey,
-          CNContactNameSuffixKey,
-          CNContactOrganizationNameKey,
-      ];
-      NSArray<CNContact *> *contactsInDefaultCollection = [self.store cg_discreteContactsMatchingPredicate:collectionPredicate keysToFetch:keys error:&error];
-      contactsInDefaultCollection = [contactsInDefaultCollection sortedArrayUsingComparator:^(id obj1, id obj2) {
-        CNContact *a = obj1;
-        CNContact *b = obj2;
-        NSString *aS = [a familyName];
-        if (0 == aS.length) {
-          aS = [a organizationName];
+      NSMutableArray<NSString *> *ids = [NSMutableArray array];
+      for (CNContact *contact in contacts) {
+        NSString *identifier = contact.identifier;
+        if ([contactSet containsObject:identifier]) {
+          [ids addObject:identifier];
         }
-        NSString *bS = [b familyName];
-        if (0 == bS.length) {
-          bS = [b organizationName];
-        }
-        NSComparisonResult result = [aS caseInsensitiveCompare:bS];
-        if (NSOrderedSame == result) {
-          aS = [a givenName];
-          bS = [b givenName];
-          result = [aS caseInsensitiveCompare:bS];
-        }
-        return result;
-      }];
-      for (CNContact *contact in contactsInDefaultCollection) {
-         [contactIDs addObject:contact.identifier];
       }
-      NSSet *contactSet = [NSSet setWithArray:contactIDs];
-
-      NSMutableArray<GroupModel *> *allGroups = [NSMutableArray array];
-      for (CNGroup *group in groups) {
-        GroupModel *gm = [[GroupModel alloc] init];
-        gm.group = group;
-        NSPredicate *predicate = [CNContact predicateForContactsInGroupWithIdentifier:group.identifier];
-        NSArray<CNContact *> *contacts = [self.store cg_discreteContactsMatchingPredicate:predicate keysToFetch:@[CNContactIdentifierKey] error:&error];
-        if (error) {
-          [self presentError:error];
-          break;
-        }
-        NSMutableArray<NSString *> *ids = [NSMutableArray array];
-        for (CNContact *contact in contacts) {
-          NSString *identifier = contact.identifier;
-          if ([contactSet containsObject:identifier]) {
-            [ids addObject:identifier];
-          }
-        }
-        gm.contactIDs = ids;
-        [allGroups addObject:gm];
-      }
-      dispatch_async(dispatch_get_main_queue(), ^{
-        self.contactsInDefaultCollection = contactsInDefaultCollection;
-        self.allGroups = allGroups;
-        [self reloadData];
-        // todo: take down "please wait" then present.
-      });
+      gm.contactIDs = ids;
+      [allGroups addObject:gm];
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.contactsInDefaultCollection = contactsInDefaultCollection;
+      self.allGroups = allGroups;
+      [self reloadData];
+      // todo: take down any "please wait" U.I.
     });
   });
 }
@@ -171,14 +178,14 @@ static void Append(NSMutableArray *a, NSString *s){
   [super viewDidAppear:animated];
   CNAuthorizationStatus status = [CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts];
   if (CNAuthorizationStatusAuthorized == status) {
-    [self initializeAllGroups];
+    [self initializeModel];
   } else if (CNAuthorizationStatusNotDetermined == status) {
     [self.store requestAccessForEntityType:CNEntityTypeContacts completionHandler:^(BOOL granted, NSError *error){
       dispatch_async(dispatch_get_main_queue(), ^{
         if(error) {
           [self presentError:error];
         } else if (granted) {
-          [self initializeAllGroups];
+          [self initializeModel];
         } else {
           [self presentNotAuthorized];
         }
@@ -192,7 +199,7 @@ static void Append(NSMutableArray *a, NSString *s){
 // Initialize our master model: all groups, then for each group all discrete contacts within that group. return a place holder value until then.
 - (NSArray<GroupModel *> *)allGroups {
   if (nil == _allGroups) {
-    [self initializeAllGroups];
+    [self initializeModel];
   }
   return _allGroups;
 }

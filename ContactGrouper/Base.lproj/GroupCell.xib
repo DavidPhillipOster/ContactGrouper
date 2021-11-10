@@ -16,25 +16,26 @@
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <switch opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="750" verticalHuggingPriority="750" contentHorizontalAlignment="center" contentVerticalAlignment="center" on="YES" translatesAutoresizingMaskIntoConstraints="NO" id="aKM-6R-Xk4">
-                        <rect key="frame" x="20" y="6.5" width="51" height="31.5"/>
+                        <rect key="frame" x="20" y="7" width="51" height="31"/>
                         <connections>
                             <action selector="membershipDidChange:" destination="5Zf-k6-uvR" eventType="valueChanged" id="0BQ-4g-3a3"/>
                         </connections>
                     </switch>
-                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="249" verticalHuggingPriority="251" misplaced="YES" text="Label" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="dK2-GD-LJU">
-                        <rect key="frame" x="77" y="11" width="317" height="22"/>
+                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="249" verticalHuggingPriority="251" text="Label" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="dK2-GD-LJU">
+                        <rect key="frame" x="77" y="11" width="35.5" height="22.5"/>
                         <fontDescription key="fontDescription" style="UICTFontTextStyleBody"/>
                         <nil key="textColor"/>
                         <nil key="highlightedColor"/>
                     </label>
                 </subviews>
                 <constraints>
-                    <constraint firstItem="aKM-6R-Xk4" firstAttribute="top" secondItem="dE7-4I-dce" secondAttribute="topMargin" constant="-4.5" id="6ts-uD-ncm"/>
+                    <constraint firstItem="aKM-6R-Xk4" firstAttribute="top" relation="greaterThanOrEqual" secondItem="dE7-4I-dce" secondAttribute="topMargin" constant="-4.5" id="6ts-uD-ncm"/>
                     <constraint firstItem="aKM-6R-Xk4" firstAttribute="leading" secondItem="dE7-4I-dce" secondAttribute="leadingMargin" id="JFX-sB-jFZ"/>
                     <constraint firstItem="dK2-GD-LJU" firstAttribute="leading" secondItem="aKM-6R-Xk4" secondAttribute="trailing" constant="8" id="L4m-iU-OuN"/>
                     <constraint firstAttribute="trailing" relation="greaterThanOrEqual" secondItem="dK2-GD-LJU" secondAttribute="trailing" constant="20" symbolic="YES" id="SED-mu-3V6"/>
                     <constraint firstItem="dK2-GD-LJU" firstAttribute="centerY" secondItem="aKM-6R-Xk4" secondAttribute="centerY" id="dGw-Ld-VsY"/>
                     <constraint firstItem="dK2-GD-LJU" firstAttribute="top" secondItem="dE7-4I-dce" secondAttribute="topMargin" id="fpc-kB-Xgf"/>
+                    <constraint firstAttribute="bottom" relation="greaterThanOrEqual" secondItem="dK2-GD-LJU" secondAttribute="bottom" constant="10" id="mtI-vC-o32"/>
                     <constraint firstItem="aKM-6R-Xk4" firstAttribute="centerY" secondItem="dE7-4I-dce" secondAttribute="centerY" id="snY-ll-ct9"/>
                 </constraints>
             </tableViewCellContentView>

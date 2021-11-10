@@ -31,6 +31,8 @@ Version 1.1 - backport to also support iOS 12.
 
 Version 1.2 - two column user interface: select a contact, edit its group membership.
 
+Version 1.3 - Dynamic type support. Support for other apps changing the contact database while ContactGrouper is running.
+
 ## Apache License
 
 Released under the Apache version 2 license.
