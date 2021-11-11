@@ -10,6 +10,7 @@
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+  application.applicationSupportsShakeToEdit = YES;
   self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
   self.window.rootViewController  = [[ContactGroupViewController alloc] init];
   [self.window makeKeyAndVisible];

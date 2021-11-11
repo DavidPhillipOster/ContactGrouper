@@ -20,6 +20,27 @@ static void Append(NSMutableArray *a, NSString *s){
   }
 }
 
+static NSString *ShortName(CNContact *contact) {
+  NSMutableArray *a = [NSMutableArray array];
+  Append(a,[contact givenName]);
+  Append(a,[contact familyName]);
+  if (0 == [a count]) {
+    Append(a,[contact organizationName]);
+  }
+  return [a componentsJoinedByString:@" "];
+}
+
+static NSString *ContactLabel(CNContact *contact){
+  NSMutableArray *a = [NSMutableArray array];
+  Append(a,[contact namePrefix]);
+  Append(a,[contact givenName]);
+  Append(a,[contact middleName]);
+  Append(a,[contact familyName]);
+  Append(a,[contact nameSuffix]);
+  Append(a,[contact organizationName]);
+  return [a componentsJoinedByString:@" "];
+}
+
 /// Theory of operation:
 /// show the contacts plus all the groups with on off switches.
 /// as the user toggles the on-off switch, update the address book and data in RAM.
@@ -51,6 +72,10 @@ static void Append(NSMutableArray *a, NSString *s){
 @end
 
 @implementation ContactGroupViewController
+
+- (BOOL)canBecomeFirstResponder {
+  return YES;
+}
 
 - (void)loadView {
   CGRect bounds = UIScreen.mainScreen.bounds;
@@ -165,17 +190,25 @@ static void Append(NSMutableArray *a, NSString *s){
       gm.contactIDs = ids;
       [allGroups addObject:gm];
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-      self.contactsInDefaultCollection = contactsInDefaultCollection;
-      self.allGroups = allGroups;
-      [self reloadData];
-      // todo: take down any "please wait" U.I.
-    });
+    // since a notification is triggered each time the contacts database changes, including changes this app does,
+    // don't update the U.I. unless the list of contacts changes or the list of groups changes.
+    // (ignore group membership changes so the undo stack will be preserved.)
+    if (![self.contactsInDefaultCollection isEqual:contactsInDefaultCollection] ||
+        ![[self.allGroups valueForKeyPath:@"group.name"] isEqual:[allGroups valueForKeyPath:@"group.name"]]) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+          [self.undoManager removeAllActions];
+          self.contactsInDefaultCollection = contactsInDefaultCollection;
+          self.allGroups = allGroups;
+          [self reloadData];
+          // todo: take down any "please wait" U.I.
+      });
+    }
   });
 }
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
+  [self becomeFirstResponder];
   CNAuthorizationStatus status = [CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts];
   if (CNAuthorizationStatusAuthorized == status) {
     [self initializeModel];
@@ -196,6 +229,12 @@ static void Append(NSMutableArray *a, NSString *s){
   }
 }
 
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  [self resignFirstResponder];
+}
+
+
 // Initialize our master model: all groups, then for each group all discrete contacts within that group. return a place holder value until then.
 - (NSArray<GroupModel *> *)allGroups {
   if (nil == _allGroups) {
@@ -209,6 +248,32 @@ static void Append(NSMutableArray *a, NSString *s){
     _store = [[CNContactStore alloc] init];
   }
   return _store;
+}
+
+/// set the model's current contact, and as a side effect, show it in the U.I.
+- (void)setCurrentContact:(CNContact *)contact {
+  if (_currentContact != contact) {
+    _currentContact = contact;
+    self.contactLabel.text = ContactLabel(contact);
+    NSIndexPath *path = [self indexPathOfContact:contact];
+    if (path) {
+      [self.contactTableView selectRowAtIndexPath:path animated:YES scrollPosition:UITableViewScrollPositionMiddle];
+    }
+    [self.groupTableView reloadData];
+  }
+}
+
+/// Given a contact, return the indexPath, nil if not found.
+- (NSIndexPath *)indexPathOfContact:(CNContact *)contact {
+  for (NSUInteger  sectionIndex = 0;sectionIndex < self.sections.count; ++sectionIndex) {
+    ContactSectionModel *section = self.sections[sectionIndex];
+    for (NSUInteger index = 0;index < section.contacts.count; ++index) {
+      if (section.contacts[index] == contact) {
+        return [NSIndexPath indexPathForItem:index inSection:sectionIndex];
+      }
+    }
+  }
+  return nil;
 }
 
 - (void)presentNotAuthorized {
@@ -302,30 +367,78 @@ static void Append(NSMutableArray *a, NSString *s){
   }
   GroupModel *groupModel = self.allGroups[cell.groupIndex];
   NSMutableArray<NSString *> *mutableContacts = [groupModel.contactIDs mutableCopy];
-  CNSaveRequest *request = [[CNSaveRequest alloc] init];
+
+  NSString *pattern = cell.isMember.isOn ?
+    NSLocalizedString(@"Add Contact", @"") :
+    NSLocalizedString(@"Remove Contact", @"");
+  NSString *name = [NSString stringWithFormat:pattern, ShortName(contact), groupModel.group.name];
+  [self.undoManager setActionName:name];
+
   if (cell.isMember.isOn) {
-    [mutableContacts addObject:contact.identifier];
-    [request addMember:contact toGroup:groupModel.group];
+    [self undoablyAdd:contact toGroup:groupModel mutableContacts:mutableContacts];
   } else {
-    [mutableContacts removeObject:contact.identifier];
-    [request removeMember:contact fromGroup:groupModel.group];
+    [self undoablyRemove:contact fromGroup:groupModel mutableContacts:mutableContacts];
   }
+}
+
+- (void)undoablyAdd:(CNContact *)contact toGroup:(GroupModel *)groupModel mutableContacts:(NSMutableArray<NSString *> *)mutableContacts {
+  [[self.undoManager prepareWithInvocationTarget:self] undoablyRemove:contact fromGroup:groupModel mutableContacts:[mutableContacts mutableCopy]];
+  self.currentContact = contact;
+  CNSaveRequest *request = [[CNSaveRequest alloc] init];
+  [mutableContacts addObject:contact.identifier];
+  [request addMember:contact toGroup:groupModel.group];
+  [self executeRequest:request completion:^(BOOL didSucceed){
+    if (didSucceed) {
+      groupModel.contactIDs = mutableContacts;  // It worked. update the model to match U.I. state.
+      [self reloadContact:contact forGroup:groupModel];
+    } else {
+      [self reloadContact:contact forGroup:groupModel];
+    }
+  }];
+}
+
+- (void)undoablyRemove:(CNContact *)contact fromGroup:(GroupModel *)groupModel mutableContacts:(NSMutableArray<NSString *> *)mutableContacts {
+  [[self.undoManager prepareWithInvocationTarget:self] undoablyAdd:contact toGroup:groupModel mutableContacts:[mutableContacts mutableCopy]];
+  self.currentContact = contact;
+  CNSaveRequest *request = [[CNSaveRequest alloc] init];
+  [mutableContacts removeObject:contact.identifier];
+  [request removeMember:contact fromGroup:groupModel.group];
+  [self executeRequest:request completion:^(BOOL didSucceed){
+    if (didSucceed) {
+      groupModel.contactIDs = mutableContacts;  // It worked. update the model to match U.I. state.
+      [self reloadContact:contact forGroup:groupModel];
+    } else {
+      [self reloadContact:contact forGroup:groupModel];
+    }
+  }];
+}
+
+// completion is executed on the main quue
+- (void)executeRequest:(CNSaveRequest *)request completion:(void (^)(BOOL didSucceed))completion {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), ^{
     NSError *error = nil;
-    if ([self.store executeSaveRequest:request error:&error]) {
-      groupModel.contactIDs = mutableContacts;  // It worked. update the model to match U.I. state.
-    } else {
-      NSIndexPath *path = [NSIndexPath indexPathForRow:cell.groupIndex inSection:0];
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (contact == self.currentContact) {
-          // It failed. update the U.I. to match model state.
-          [self.contactTableView reloadRowsAtIndexPaths:@[path] withRowAnimation:NO];
-        }
-      });
-      [self presentError:error];
-    }
+    BOOL success = [self.store executeSaveRequest:request error:&error];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      completion(success);
+      if (error) {
+        [self.undoManager removeAllActions];
+        [self presentError:error];
+      }
+    });
   });
 }
+
+// If we are displaying contact, then redraw the appropriate group.
+- (void)reloadContact:(CNContact *)contact forGroup:(GroupModel *)groupModel {
+  if (contact == self.currentContact) {
+    NSUInteger index = [self.allGroups indexOfObject:groupModel];
+    if (NSNotFound != index) {
+      NSIndexPath *path = [NSIndexPath indexPathForRow:index inSection:0];
+      [self.groupTableView reloadRowsAtIndexPaths:@[path] withRowAnimation:NO];
+    }
+  }
+}
+
 
 #pragma mark - TableViewDelegate
 
@@ -380,14 +493,7 @@ static void Append(NSMutableArray *a, NSString *s){
   }
   ContactSectionModel *contactSection = self.sections[indexPath.section];
   CNContact *contact = contactSection.contacts[indexPath.row];
-  NSMutableArray *a = [NSMutableArray array];
-  Append(a,[contact namePrefix]);
-  Append(a,[contact givenName]);
-  Append(a,[contact middleName]);
-  Append(a,[contact familyName]);
-  Append(a,[contact nameSuffix]);
-  Append(a,[contact organizationName]);
-  cell.textLabel.text = [a componentsJoinedByString:@" "];
+  cell.textLabel.text = ContactLabel(contact);
   return cell;
 }
 
@@ -426,11 +532,8 @@ static void Append(NSMutableArray *a, NSString *s){
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
   if (self.contactTableView == tableView) {
-    UITableViewCell *cell = [tableView cellForRowAtIndexPath:indexPath];
     ContactSectionModel *contactSection = self.sections[indexPath.section];
     self.currentContact = contactSection.contacts[indexPath.row];
-    self.contactLabel.text = cell.textLabel.text;
-    [self.groupTableView reloadData];
   }
 }
 

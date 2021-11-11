@@ -5,6 +5,8 @@
   by David Phillip Oster © 2021 All Rights Reserved on 11/5/21.
 */
 
+"Add Contact" = "Add “%@” to “%@”";
+
 "Contacts" = "Contacts";
 
 "ContactsDenied" = "Access to Contacts is turned off.";
@@ -14,6 +16,8 @@
 "Groups" = "Groups";
 
 "OK" = "OK";
+
+"Remove Contact" = "Remove “%@” from “%@”";
 
 "Settings" = "Settings";
 
